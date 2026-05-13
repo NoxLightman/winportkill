@@ -6,7 +6,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{
         Block, BorderType, Borders, Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Table, TableState,
+        ScrollbarState, Table, TableState, Widget,
     },
 };
 
@@ -23,6 +23,98 @@ const UDP_COLOR: Color = Color::Green;
 const PORT_COLOR: Color = Color::Yellow;
 const MEM_COLOR: Color = Color::Magenta;
 
+struct BulbLogo;
+
+const BULB_BODY: Color = Color::Rgb(255, 220, 50);
+const BULB_GLOW: Color = Color::Rgb(255, 255, 150);
+const BULB_DARK: Color = Color::Rgb(180, 140, 20);
+const BULB_BASE: Color = Color::Rgb(120, 100, 60);
+const BULB_BASE_DARK: Color = Color::Rgb(80, 70, 40);
+
+impl Widget for BulbLogo {
+    fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
+        const ART: [&str; 7] = [
+            "  xxxx  ",
+            " xXxXXx ",
+            "xXXXXXXx",
+            "xXxXxXXx",
+            " xXxXXx ",
+            "  xBBx  ",
+            "  xDDx  ",
+        ];
+        const COLORS: [[Color; 8]; 7] = [
+            [TOP_BAR_BG, TOP_BAR_BG, BULB_DARK, BULB_BODY, BULB_BODY, BULB_DARK, TOP_BAR_BG, TOP_BAR_BG],
+            [TOP_BAR_BG, BULB_DARK, BULB_BODY, BULB_GLOW, BULB_BODY, BULB_GLOW, BULB_DARK, TOP_BAR_BG],
+            [BULB_DARK, BULB_BODY, BULB_GLOW, BULB_GLOW, BULB_GLOW, BULB_GLOW, BULB_BODY, BULB_DARK],
+            [BULB_DARK, BULB_BODY, BULB_GLOW, BULB_BODY, BULB_GLOW, BULB_BODY, BULB_GLOW, BULB_DARK],
+            [TOP_BAR_BG, BULB_DARK, BULB_BODY, BULB_GLOW, BULB_BODY, BULB_GLOW, BULB_DARK, TOP_BAR_BG],
+            [TOP_BAR_BG, TOP_BAR_BG, BULB_BASE, BULB_BASE, BULB_BASE, BULB_BASE, TOP_BAR_BG, TOP_BAR_BG],
+            [TOP_BAR_BG, TOP_BAR_BG, BULB_BASE_DARK, BULB_BASE_DARK, BULB_BASE_DARK, BULB_BASE_DARK, TOP_BAR_BG, TOP_BAR_BG],
+        ];
+
+        for (row_idx, line) in ART.iter().enumerate() {
+            let y = area.y + row_idx as u16;
+            if y >= area.bottom() {
+                break;
+            }
+            for (col_idx, ch) in line.chars().enumerate() {
+                let x = area.x + col_idx as u16;
+                if x >= area.right() {
+                    break;
+                }
+                if ch != ' ' {
+                    let cell = buf.cell_mut((x, y)).unwrap();
+                    cell.set_style(Style::default().bg(COLORS[row_idx][col_idx]));
+                    cell.set_char(' ');
+                }
+            }
+        }
+    }
+}
+
+struct TitleAsciiArt;
+
+impl Widget for TitleAsciiArt {
+    fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
+        const ART: [&str; 4] = [
+            "__      ___      ___         _   _  ___ _ _ ",
+            " \\ \\    / (_)_ _ | _ \\___ _ _| |_| |/ (_| | |",
+            "  \\ \\/\\/ /| | ' \\|  _/ _ | '_|  _| ' <| | | |",
+            "   \\_/\\_/ |_|_||_|_| \\___|_|  \\__|_|\\_|_|_|_|",
+        ];
+        let v_off = if area.height > 4 { (area.height - 4) / 2 + 1 } else { 0 };
+        let art_w = ART[0].chars().count() as u16;
+        let h_off = if area.width > art_w { (area.width - art_w) / 2 } else { 0 };
+
+        for (row_idx, line) in ART.iter().enumerate() {
+            let y = area.y + v_off + row_idx as u16;
+            if y >= area.bottom() {
+                break;
+            }
+            let len = line.chars().count();
+            for (col_idx, ch) in line.chars().enumerate() {
+                let x = area.x + h_off + col_idx as u16;
+                if x >= area.right() {
+                    break;
+                }
+                if ch != ' ' {
+                    let cell = buf.cell_mut((x, y)).unwrap();
+                    let t = col_idx as f32 / len.max(1) as f32;
+                    let r = (180.0 + (255.0 - 180.0) * t) as u8;
+                    let g = (140.0 + (240.0 - 140.0) * t) as u8;
+                    let b = (20.0 + (100.0 - 20.0) * t) as u8;
+                    cell.set_style(
+                        Style::default()
+                            .fg(Color::Rgb(r, g, b))
+                            .add_modifier(Modifier::BOLD),
+                    );
+                    cell.set_char(ch);
+                }
+            }
+        }
+    }
+}
+
 pub fn draw(f: &mut Frame, app: &App) {
     f.render_widget(
         Block::new().style(Style::default().bg(TOP_BAR_BG)),
@@ -32,7 +124,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5),
+            Constraint::Length(7),
             Constraint::Length(3),
             Constraint::Min(5),
             Constraint::Length(1),
@@ -46,83 +138,40 @@ pub fn draw(f: &mut Frame, app: &App) {
 }
 
 fn draw_top_bar(f: &mut Frame, app: &App, area: Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Length(28),
-            Constraint::Length(16),
-            Constraint::Min(20),
-            Constraint::Length(32),
-        ])
-        .split(area);
-
-    let title = ratatui::widgets::Paragraph::new(" WinPortKill ")
-        .style(
-            Style::default()
-                .bg(TOP_BAR_BG)
-                .fg(PORT_COLOR)
-                .add_modifier(Modifier::BOLD),
-        )
-        .alignment(Alignment::Left);
-    f.render_widget(title, chunks[0]);
-
-    let tabs = match app.view_mode {
-        ViewMode::Ports => Line::from(vec![
-            Span::styled(
-                "[Ports]",
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::styled("Processes", Style::default().fg(DIM_FG)),
-        ]),
-        ViewMode::Processes => Line::from(vec![
-            Span::styled("Ports", Style::default().fg(DIM_FG)),
-            Span::raw(" "),
-            Span::styled(
-                "[Processes]",
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ),
-        ]),
-    };
-    let tabs_widget = ratatui::widgets::Paragraph::new(tabs).alignment(Alignment::Center);
-    f.render_widget(tabs_widget, chunks[1]);
-
     let stats_lines = match app.view_mode {
         ViewMode::Ports => {
             let mem_mb = app.port_stats.total_mem_bytes as f64 / 1024.0 / 1024.0;
             vec![
                 Line::from(vec![
-                    Span::styled("Rows ", Style::default().fg(DIM_FG)),
+                    Span::styled("\u{1F527} ", Style::default()),
                     Span::styled(
-                        app.port_stats.total_rows.to_string(),
-                        Style::default()
-                            .fg(Color::White)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::raw("  "),
-                    Span::styled("Proc ", Style::default().fg(DIM_FG)),
-                    Span::styled(
-                        app.port_stats.total_procs.to_string(),
-                        Style::default()
-                            .fg(Color::White)
-                            .add_modifier(Modifier::BOLD),
+                        format!("Rows:{}", app.port_stats.total_rows),
+                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(vec![
-                    Span::styled("TCP ", Style::default().fg(DIM_FG)),
+                    Span::styled("\u{1F4CB} ", Style::default()),
                     Span::styled(
-                        app.port_stats.tcp_count.to_string(),
+                        format!("Proc:{}", app.port_stats.total_procs),
+                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled("\u{1F310} ", Style::default()),
+                    Span::styled(
+                        format!("TCP:{}", app.port_stats.tcp_count),
                         Style::default().fg(TCP_COLOR).add_modifier(Modifier::BOLD),
                     ),
                     Span::raw("  "),
-                    Span::styled("UDP ", Style::default().fg(DIM_FG)),
                     Span::styled(
-                        app.port_stats.udp_count.to_string(),
+                        format!("UDP:{}", app.port_stats.udp_count),
                         Style::default().fg(UDP_COLOR).add_modifier(Modifier::BOLD),
                     ),
-                    Span::raw("  "),
+                ]),
+                Line::from(vec![
+                    Span::styled("\u{1F4BE} ", Style::default()),
                     Span::styled(
-                        format!("Mem {:.0} MB", mem_mb),
+                        format!("Mem:{:.1} GB", mem_mb / 1024.0),
                         Style::default().fg(MEM_COLOR).add_modifier(Modifier::BOLD),
                     ),
                 ]),
@@ -132,43 +181,35 @@ fn draw_top_bar(f: &mut Frame, app: &App, area: Rect) {
             let mem_mb = app.process_stats.total_mem_bytes as f64 / 1024.0 / 1024.0;
             vec![
                 Line::from(vec![
-                    Span::styled("Proc ", Style::default().fg(DIM_FG)),
+                    Span::styled("\u{1F527} ", Style::default()),
                     Span::styled(
-                        app.process_stats.total_procs.to_string(),
-                        Style::default()
-                            .fg(Color::White)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::raw("  "),
-                    Span::styled("With Ports ", Style::default().fg(DIM_FG)),
-                    Span::styled(
-                        app.process_stats.procs_with_ports.to_string(),
-                        Style::default()
-                            .fg(Color::White)
-                            .add_modifier(Modifier::BOLD),
+                        format!("Procs:{}", app.process_stats.total_procs),
+                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(vec![
-                    Span::styled("Bindings ", Style::default().fg(DIM_FG)),
+                    Span::styled("\u{1F4CB} ", Style::default()),
                     Span::styled(
-                        app.process_stats.total_port_bindings.to_string(),
-                        Style::default().fg(PORT_COLOR).add_modifier(Modifier::BOLD),
+                        format!("Active:{}", app.process_stats.procs_with_ports),
+                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
                     ),
-                    Span::raw("  "),
-                    Span::styled("TCP ", Style::default().fg(DIM_FG)),
+                ]),
+                Line::from(vec![
+                    Span::styled("\u{1F310} ", Style::default()),
                     Span::styled(
-                        app.process_stats.tcp_count.to_string(),
+                        format!("TCP:{}", app.process_stats.tcp_count),
                         Style::default().fg(TCP_COLOR).add_modifier(Modifier::BOLD),
                     ),
                     Span::raw("  "),
-                    Span::styled("UDP ", Style::default().fg(DIM_FG)),
                     Span::styled(
-                        app.process_stats.udp_count.to_string(),
+                        format!("UDP:{}", app.process_stats.udp_count),
                         Style::default().fg(UDP_COLOR).add_modifier(Modifier::BOLD),
                     ),
-                    Span::raw("  "),
+                ]),
+                Line::from(vec![
+                    Span::styled("\u{1F4BE} ", Style::default()),
                     Span::styled(
-                        format!("Mem {:.0} MB", mem_mb),
+                        format!("Mem:{:.1} GB", mem_mb / 1024.0),
                         Style::default().fg(MEM_COLOR).add_modifier(Modifier::BOLD),
                     ),
                 ]),
@@ -176,13 +217,96 @@ fn draw_top_bar(f: &mut Frame, app: &App, area: Rect) {
         }
     };
 
-    let stats = ratatui::widgets::Paragraph::new(stats_lines).alignment(Alignment::Left);
-    f.render_widget(stats, chunks[2]);
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(10),
+            Constraint::Length(48),
+            Constraint::Length(20),
+            Constraint::Length(56),
+        ])
+        .split(area);
 
-    let help = ratatui::widgets::Paragraph::new("Tab switch view")
-        .style(Style::default().fg(DIM_FG))
-        .alignment(Alignment::Right);
-    f.render_widget(help, chunks[3]);
+    let y_off = if cols[0].height > 7 { (cols[0].height - 7) / 2 } else { 0 };
+    let logo_area = Rect::new(cols[0].x + 1, cols[0].y + y_off, 8, 7);
+    BulbLogo.render(logo_area, f.buffer_mut());
+
+    TitleAsciiArt.render(cols[1], f.buffer_mut());
+
+    let mid_y = if cols[2].height > 4 { (cols[2].height - 4) / 2 + 1 } else { 0 };
+    let stats = ratatui::widgets::Paragraph::new(stats_lines)
+        .style(Style::default().bg(TOP_BAR_BG))
+        .alignment(Alignment::Left);
+    let stats_area = Rect::new(
+        cols[2].x + 1,
+        cols[2].y + mid_y,
+        cols[2].width.saturating_sub(1),
+        4,
+    );
+    f.render_widget(stats, stats_area);
+
+    render_figlet_clock(cols[3], f.buffer_mut());
+}
+
+fn render_figlet_clock(area: Rect, buf: &mut ratatui::buffer::Buffer) {
+    if area.width < 20 || area.height < 3 {
+        return;
+    }
+
+    use std::sync::LazyLock;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static FONT: LazyLock<figlet_rs::FIGlet> =
+        LazyLock::new(|| figlet_rs::FIGlet::standard().unwrap());
+
+    let d = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let s = d.as_secs();
+    let h = ((s / 3600 % 24) + 8) % 24;
+    let m = s / 60 % 60;
+    let sec = s % 60;
+    let time_str = format!("{:02}:{:02}:{:02}", h, m, sec);
+
+    let figure = match FONT.convert(&time_str) {
+        Some(f) => f,
+        None => return,
+    };
+    let ascii = figure.to_string();
+    let lines: Vec<&str> = ascii.lines().collect();
+    let max_width = lines.iter().map(|l| l.chars().count()).max().unwrap_or(1);
+
+    let art_h = lines.len() as u16;
+    let y_off = if area.height > art_h { (area.height - art_h) / 2 + 1 } else { 0 };
+    let x_off = if area.width as usize > max_width {
+        (area.width as usize - max_width) / 2
+    } else {
+        0
+    };
+
+    for (row_idx, line) in lines.iter().enumerate() {
+        let y = area.y + y_off + row_idx as u16;
+        if y >= area.bottom() {
+            break;
+        }
+        for (col_idx, ch) in line.chars().enumerate() {
+            if ch == ' ' {
+                continue;
+            }
+            let x = area.x + (x_off + col_idx) as u16;
+            if x >= area.right() {
+                break;
+            }
+            let cell = buf.cell_mut((x, y)).unwrap();
+            let ratio = col_idx as f32 / max_width as f32;
+            let hue = ((ratio * 360.0) + sec as f32 * 6.0) % 360.0;
+            let h_rad = hue * std::f32::consts::PI / 180.0;
+            cell.set_style(Style::default().fg(Color::Rgb(
+                (128.0 + 127.0 * h_rad.cos()) as u8,
+                (128.0 + 127.0 * (h_rad + 2.094).cos()) as u8,
+                (128.0 + 127.0 * (h_rad + 4.189).cos()) as u8,
+            )));
+            cell.set_char(ch);
+        }
+    }
 }
 
 fn draw_filter(f: &mut Frame, app: &App, area: Rect) {
@@ -235,7 +359,7 @@ fn draw_ports_table(f: &mut Frame, app: &App, area: Rect) {
 
     let constraints = [
         Constraint::Length(7),
-        Constraint::Length(18),
+        Constraint::Length(16),
         Constraint::Length(7),
         Constraint::Length(8),
         Constraint::Length(10),
@@ -392,7 +516,17 @@ fn draw_status(f: &mut Frame, app: &App, area: Rect) {
         ]
     };
 
+    let view_indicator = match app.view_mode {
+        ViewMode::Ports => "[Ports] Processes",
+        ViewMode::Processes => "Ports [Processes]",
+    };
+
     let mut spans: Vec<Span> = Vec::new();
+    spans.push(Span::styled(
+        view_indicator,
+        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+    ));
+    spans.push(Span::raw("  "));
     for (i, (key, desc)) in keys.iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw(" "));
