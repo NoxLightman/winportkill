@@ -66,3 +66,10 @@ Current thresholds:
 - `processResources` copies `.vscode-extension/bin/win32-x64/winportkill.exe` into plugin resources when available
 - development prefers the external checked-out binary
 - the current MVP enforces Windows support in code
+
+## Marketplace Notes
+
+- primary distribution target: JetBrains Marketplace
+- packaged artifact: `jetbrains-plugin/build/distributions/*.zip`
+- current publisher metadata comes from `plugin.xml`
+- release automation should attach the plugin zip to GitHub Releases even before Marketplace upload is automated

@@ -4,8 +4,24 @@
     <vendor url="https://github.com/NoxLightman/winport-killer">NoxLightman</vendor>
 
     <description><![CDATA[
-        Inspect local Windows x64 listening ports and processes inside JetBrains IDEs.
+        <p>Inspect local Windows x64 listening ports and processes directly inside JetBrains IDEs.</p>
+        <ul>
+            <li>Ports and processes views in a Tool Window</li>
+            <li>Filter by PID, process name, protocol, address, or port</li>
+            <li>Kill the selected process from the IDE</li>
+            <li>Local sidecar backend shared with the Rust CLI toolset</li>
+        </ul>
     ]]></description>
+
+    <change-notes><![CDATA[
+        <p>0.1.0</p>
+        <ul>
+            <li>Initial public release</li>
+            <li>Ports and processes inspection views</li>
+            <li>Filter and kill actions</li>
+            <li>Windows x64 sidecar integration</li>
+        </ul>
+    ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
 
