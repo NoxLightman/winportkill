@@ -98,6 +98,14 @@ The JetBrains plugin lives under [jetbrains-plugin](./jetbrains-plugin).
 - starts the same sidecar binary shape with `winportkill.exe --serve <port>`
 - uses a Kotlin HTTP client against the local sidecar
 
+## Releases
+
+Tag-based releases publish Windows x64 artifacts to GitHub Releases:
+
+- `winportkill-windows-x64.exe`
+- `winportkill-gui-windows-x64.exe`
+- `@noxlightman/winportkill` npm tarball
+
 ## Documentation Index
 
 - [Project Architecture](./docs/project-architecture.en.md) | [项目架构](./docs/project-architecture.zh.md)
