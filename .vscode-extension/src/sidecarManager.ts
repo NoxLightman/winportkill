@@ -85,16 +85,14 @@ export class SidecarManager implements vscode.Disposable {
   }
 
   private resolveBinaryPath(): string {
-    const arch = process.arch;
     if (process.platform !== "win32") {
-      throw new Error("WinPortKill MVP currently supports only Windows.");
+      throw new Error("WinPortKill currently supports only Windows x64.");
+    }
+    if (process.arch !== "x64") {
+      throw new Error(`WinPortKill currently supports only Windows x64. Detected: ${process.arch}`);
     }
 
-    const relative = arch === "arm64"
-      ? path.join("bin", "win32-arm64", "winportkill.exe")
-      : path.join("bin", "win32-x64", "winportkill.exe");
-
-    return this.context.asAbsolutePath(relative);
+    return this.context.asAbsolutePath(path.join("bin", "win32-x64", "winportkill.exe"));
   }
 
   private cleanupFailedStart(): void {

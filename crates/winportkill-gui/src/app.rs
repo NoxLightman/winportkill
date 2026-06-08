@@ -132,30 +132,26 @@ impl App {
     }
 
     fn reconcile_selection(&mut self) {
-        if let Some(row) = &self.selected_port_row {
-            if self
-                .filtered_ports
+        let port_selection_valid = self.selected_port_row.as_ref().is_some_and(|row| {
+            self.filtered_ports
                 .iter()
                 .any(|entry| PortRowKey::from_entry(entry) == *row)
-            {
-                return;
-            }
+        });
+        if !port_selection_valid {
+            self.selected_port_row = self.filtered_ports.first().map(PortRowKey::from_entry);
         }
-        self.selected_port_row = self.filtered_ports.first().map(PortRowKey::from_entry);
 
-        if let Some(row) = &self.selected_process_row {
-            if self
-                .filtered_processes
+        let process_selection_valid = self.selected_process_row.as_ref().is_some_and(|row| {
+            self.filtered_processes
                 .iter()
                 .any(|entry| ProcessRowKey::from_entry(entry) == *row)
-            {
-                return;
-            }
+        });
+        if !process_selection_valid {
+            self.selected_process_row = self
+                .filtered_processes
+                .first()
+                .map(ProcessRowKey::from_entry);
         }
-        self.selected_process_row = self
-            .filtered_processes
-            .first()
-            .map(ProcessRowKey::from_entry);
 
         self.scroll_to_selected_once = self.current_len() > 0;
     }

@@ -97,7 +97,7 @@ That matters because:
 
 ## Operational Boundaries
 
-- The inspection backend is Windows-only in practice.
+- The inspection backend is currently Windows x64-only in practice.
 - Kill semantics are process-wide, not “release only one port”.
 - Protected targets may require elevation.
 - The WebSocket stream currently publishes port snapshots only.

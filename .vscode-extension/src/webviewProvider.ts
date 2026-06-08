@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { ApiClient } from "./apiClient";
 import { SidecarManager } from "./sidecarManager";
-import { KillResult, ProcessResponse, PortResponse, ViewMode } from "./types";
+import { KillResult, ProcessEntry, ProcessResponse, PortEntry, PortResponse, ViewMode } from "./types";
 
 type PanelState =
   | { type: "loading"; message: string }
@@ -9,6 +9,8 @@ type PanelState =
       type: "ready";
       mode: ViewMode;
       filter: string;
+      selectedRowId: string | null;
+      selectedPid: number | null;
       payload: PortResponse | ProcessResponse;
       status: string;
       statusKind: "ok" | "error" | "info";
@@ -19,16 +21,37 @@ type IncomingMessage =
   | { type: "ready" }
   | { type: "refresh"; mode: ViewMode; filter: string }
   | { type: "switchMode"; mode: ViewMode; filter: string }
+  | { type: "select"; mode: ViewMode; filter: string; rowId: string; pid: number }
   | { type: "kill"; pid: number; mode: ViewMode; filter: string };
 
-export class WinPortKillViewProvider implements vscode.WebviewViewProvider {
+export class WinPortKillViewProvider
+  implements vscode.WebviewViewProvider, vscode.Disposable
+{
   private view: vscode.WebviewView | undefined;
   private requestVersion = 0;
+  private refreshTimer: NodeJS.Timeout | undefined;
+  private currentMode: ViewMode = "ports";
+  private currentFilter = "";
+  private selectedRowId: string | null = null;
+  private selectedPid: number | null = null;
+  private lastPayload: PortResponse | ProcessResponse | undefined;
+  private readonly configurationSubscription: vscode.Disposable;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly sidecarManager: SidecarManager
-  ) {}
+  ) {
+    this.configurationSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("winportkill.refreshIntervalSeconds")) {
+        this.configureAutoRefresh();
+      }
+    });
+  }
+
+  dispose(): void {
+    this.stopAutoRefresh();
+    this.configurationSubscription.dispose();
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void | Thenable<void> {
     this.view = webviewView;
@@ -40,10 +63,40 @@ export class WinPortKillViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (message: IncomingMessage) => {
       await this.handleMessage(message);
     });
+    webviewView.onDidChangeVisibility(() => {
+      this.configureAutoRefresh();
+    });
+    webviewView.onDidDispose(() => {
+      if (this.view === webviewView) {
+        this.view = undefined;
+      }
+      this.stopAutoRefresh();
+    });
+
+    this.configureAutoRefresh();
   }
 
   async refresh(mode: ViewMode = "ports", filter = ""): Promise<void> {
     await this.pushData(mode, filter, "Refreshed", "info");
+  }
+
+  async killSelected(): Promise<void> {
+    if (!this.view) {
+      vscode.window.showInformationMessage("Open the WinPortKill panel and select a row first.");
+      return;
+    }
+
+    if (!this.lastPayload) {
+      await this.pushData(this.currentMode, this.currentFilter, "", "info");
+    }
+
+    const selection = resolveSelection(this.currentMode, this.lastPayload, this.selectedRowId);
+    if (!selection.pid) {
+      vscode.window.showInformationMessage("No WinPortKill row is selected.");
+      return;
+    }
+
+    await this.killAndRefresh(selection.pid, this.currentMode, this.currentFilter);
   }
 
   private async handleMessage(message: IncomingMessage): Promise<void> {
@@ -54,6 +107,12 @@ export class WinPortKillViewProvider implements vscode.WebviewViewProvider {
       case "refresh":
       case "switchMode":
         await this.pushData(message.mode, message.filter, "");
+        return;
+      case "select":
+        this.currentMode = message.mode;
+        this.currentFilter = message.filter;
+        this.selectedRowId = message.rowId;
+        this.selectedPid = message.pid;
         return;
       case "kill":
         await this.killAndRefresh(message.pid, message.mode, message.filter);
@@ -70,7 +129,7 @@ export class WinPortKillViewProvider implements vscode.WebviewViewProvider {
       "Kill"
     );
     if (choice !== "Kill") {
-      await this.pushData(mode, filter, "Kill cancelled", "info");
+      await this.pushData(mode, filter, "Kill cancelled", "info", { showLoading: false });
       return;
     }
 
@@ -90,10 +149,14 @@ export class WinPortKillViewProvider implements vscode.WebviewViewProvider {
     mode: ViewMode,
     filter: string,
     status: string,
-    statusKind: "ok" | "error" | "info" = "info"
+    statusKind: "ok" | "error" | "info" = "info",
+    options: { showLoading?: boolean } = {}
   ): Promise<void> {
     const requestVersion = ++this.requestVersion;
-    this.postState({ type: "loading", message: "Loading WinPortKill..." });
+    const previousSelection = this.currentMode === mode ? this.selectedRowId : null;
+    if (options.showLoading !== false) {
+      this.postState({ type: "loading", message: "Loading WinPortKill..." });
+    }
 
     try {
       const client: ApiClient = await this.sidecarManager.ensureStarted();
@@ -101,10 +164,20 @@ export class WinPortKillViewProvider implements vscode.WebviewViewProvider {
       if (requestVersion !== this.requestVersion) {
         return;
       }
+
+      const selection = resolveSelection(mode, payload, previousSelection);
+      this.currentMode = mode;
+      this.currentFilter = filter;
+      this.selectedRowId = selection.rowId;
+      this.selectedPid = selection.pid;
+      this.lastPayload = payload;
+
       this.postState({
         type: "ready",
         mode,
         filter,
+        selectedRowId: selection.rowId,
+        selectedPid: selection.pid,
         payload,
         status,
         statusKind
@@ -123,10 +196,82 @@ export class WinPortKillViewProvider implements vscode.WebviewViewProvider {
   private postState(state: PanelState): void {
     this.view?.webview.postMessage(state);
   }
+
+  private configureAutoRefresh(): void {
+    this.stopAutoRefresh();
+    if (!this.view?.visible) {
+      return;
+    }
+
+    this.refreshTimer = setInterval(() => {
+      void this.pushData(this.currentMode, this.currentFilter, "", "info", {
+        showLoading: false
+      });
+    }, getRefreshIntervalMs());
+  }
+
+  private stopAutoRefresh(): void {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = undefined;
+    }
+  }
 }
 
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function getRefreshIntervalMs(): number {
+  const seconds = vscode.workspace
+    .getConfiguration("winportkill")
+    .get<number>("refreshIntervalSeconds", 10);
+  return Math.max(3, seconds) * 1000;
+}
+
+function resolveSelection(
+  mode: ViewMode,
+  payload: PortResponse | ProcessResponse | undefined,
+  selectedRowId: string | null
+): { rowId: string | null; pid: number | null } {
+  if (!payload) {
+    return { rowId: null, pid: null };
+  }
+
+  const rows = rowsForPayload(mode, payload);
+  if (selectedRowId) {
+    const matched = rows.find((row) => row.rowId === selectedRowId);
+    if (matched) {
+      return matched;
+    }
+  }
+
+  return rows[0] ?? { rowId: null, pid: null };
+}
+
+function rowsForPayload(
+  mode: ViewMode,
+  payload: PortResponse | ProcessResponse
+): Array<{ rowId: string; pid: number }> {
+  if (mode === "ports") {
+    return (payload as PortResponse).entries.map((entry) => ({
+      rowId: portRowId(entry),
+      pid: entry.pid
+    }));
+  }
+
+  return (payload as ProcessResponse).entries.map((entry) => ({
+    rowId: processRowId(entry),
+    pid: entry.pid
+  }));
+}
+
+function portRowId(entry: PortEntry): string {
+  return `port:${entry.proto}:${entry.local_addr}:${entry.port}:${entry.pid}`;
+}
+
+function processRowId(entry: ProcessEntry): string {
+  return `process:${entry.pid}`;
 }
 
 function getWebviewHtml(webview: vscode.Webview): string {
@@ -232,8 +377,14 @@ function getWebviewHtml(webview: vscode.Webview): string {
         font-size: 11px;
         color: var(--muted);
       }
+      tr {
+        cursor: pointer;
+      }
       tr:hover {
         background: var(--vscode-list-hoverBackground);
+      }
+      tr.selected {
+        background: color-mix(in srgb, var(--vscode-list-activeSelectionBackground) 82%, transparent);
       }
       .mono {
         font-variant-numeric: tabular-nums;
@@ -251,9 +402,6 @@ function getWebviewHtml(webview: vscode.Webview): string {
       .info {
         color: var(--vscode-descriptionForeground);
       }
-      .hidden {
-        display: none;
-      }
       .ports {
         font-size: 11px;
         line-height: 1.4;
@@ -266,6 +414,11 @@ function getWebviewHtml(webview: vscode.Webview): string {
         border: 1px solid var(--panel-border);
         background: linear-gradient(180deg, color-mix(in srgb, var(--panel-bg) 90%, transparent), transparent);
         padding: 10px;
+        cursor: pointer;
+      }
+      .card.selected {
+        border-color: var(--vscode-focusBorder);
+        background: color-mix(in srgb, var(--vscode-list-activeSelectionBackground) 16%, var(--panel-bg));
       }
       .card-top {
         display: grid;
@@ -384,6 +537,8 @@ function getWebviewHtml(webview: vscode.Webview): string {
       const vscode = acquireVsCodeApi();
       let mode = "ports";
       let filter = "";
+      let selectedRowId = null;
+      let selectedPid = null;
       let isComposing = false;
       let refreshTimer = undefined;
       let lastReadyState = undefined;
@@ -464,6 +619,24 @@ function getWebviewHtml(webview: vscode.Webview): string {
         return \`<span class="metric"><span class="muted">\${label}</span> <span class="mono">\${escapeHtml(value)}</span></span>\`;
       }
 
+      function portRowId(entry) {
+        return \`port:\${entry.proto}:\${entry.local_addr}:\${entry.port}:\${entry.pid}\`;
+      }
+
+      function processRowId(entry) {
+        return \`process:\${entry.pid}\`;
+      }
+
+      function applySelection(rowId, pid) {
+        selectedRowId = rowId;
+        selectedPid = pid;
+        if (lastReadyState?.type === "ready") {
+          lastReadyState = { ...lastReadyState, selectedRowId, selectedPid };
+          renderReadyState(lastReadyState);
+        }
+        vscode.postMessage({ type: "select", mode, filter, rowId, pid });
+      }
+
       function renderStatus(state) {
         if (state.status) {
           statusEl.className = \`status \${state.statusKind}\`;
@@ -480,44 +653,50 @@ function getWebviewHtml(webview: vscode.Webview): string {
 
       function renderPorts(payload) {
         if (isCompact()) {
-          const cards = payload.entries.map((entry) => \`
-            <article class="card">
-              <div class="card-top">
-                <span class="badge \${entry.proto.startsWith("TCP") ? "tcp" : "udp"}">\${escapeHtml(entry.proto)}</span>
-                <div class="card-main">
-                  <div class="card-title mono">\${escapeHtml(entry.local_addr)}:\${escapeHtml(entry.port)}</div>
-                  <div class="card-subtitle">\${escapeHtml(entry.name)}</div>
+          const cards = payload.entries.map((entry) => {
+            const rowId = portRowId(entry);
+            return \`
+              <article class="card \${selectedRowId === rowId ? "selected" : ""}" data-row-id="\${escapeHtml(rowId)}" data-pid="\${entry.pid}">
+                <div class="card-top">
+                  <span class="badge \${entry.proto.startsWith("TCP") ? "tcp" : "udp"}">\${escapeHtml(entry.proto)}</span>
+                  <div class="card-main">
+                    <div class="card-title mono">\${escapeHtml(entry.local_addr)}:\${escapeHtml(entry.port)}</div>
+                    <div class="card-subtitle">\${escapeHtml(entry.name)}</div>
+                  </div>
+                  <button class="card-action" data-pid="\${entry.pid}">Kill</button>
                 </div>
-                <button class="card-action" data-pid="\${entry.pid}">Kill</button>
-              </div>
-              <div class="meta-grid">
-                <div>
-                  <div class="meta-label">PID</div>
-                  <div class="meta-value mono">\${entry.pid}</div>
+                <div class="meta-grid">
+                  <div>
+                    <div class="meta-label">PID</div>
+                    <div class="meta-value mono">\${entry.pid}</div>
+                  </div>
+                  <div>
+                    <div class="meta-label">Memory</div>
+                    <div class="meta-value mono">\${(entry.memory / 1024 / 1024).toFixed(1)} MB</div>
+                  </div>
                 </div>
-                <div>
-                  <div class="meta-label">Memory</div>
-                  <div class="meta-value mono">\${(entry.memory / 1024 / 1024).toFixed(1)} MB</div>
-                </div>
-              </div>
-            </article>
-          \`).join("");
+              </article>
+            \`;
+          }).join("");
 
           tableContainer.innerHTML = \`<div class="card-list">\${cards}</div>\`;
           return;
         }
 
-        const rows = payload.entries.map((entry) => \`
-          <tr>
-            <td>\${escapeHtml(entry.proto)}</td>
-            <td class="mono">\${escapeHtml(entry.local_addr)}</td>
-            <td class="mono">\${escapeHtml(entry.port)}</td>
-            <td class="mono">\${entry.pid}</td>
-            <td class="mono">\${(entry.memory / 1024 / 1024).toFixed(1)}</td>
-            <td>\${escapeHtml(entry.name)}</td>
-            <td><button data-pid="\${entry.pid}">Kill</button></td>
-          </tr>
-        \`).join("");
+        const rows = payload.entries.map((entry) => {
+          const rowId = portRowId(entry);
+          return \`
+            <tr class="\${selectedRowId === rowId ? "selected" : ""}" data-row-id="\${escapeHtml(rowId)}" data-pid="\${entry.pid}">
+              <td>\${escapeHtml(entry.proto)}</td>
+              <td class="mono">\${escapeHtml(entry.local_addr)}</td>
+              <td class="mono">\${escapeHtml(entry.port)}</td>
+              <td class="mono">\${entry.pid}</td>
+              <td class="mono">\${(entry.memory / 1024 / 1024).toFixed(1)}</td>
+              <td>\${escapeHtml(entry.name)}</td>
+              <td><button data-pid="\${entry.pid}">Kill</button></td>
+            </tr>
+          \`;
+        }).join("");
 
         tableContainer.innerHTML = \`
           <div class="table-wrap">
@@ -536,16 +715,17 @@ function getWebviewHtml(webview: vscode.Webview): string {
       function renderProcesses(payload) {
         if (isCompact()) {
           const cards = payload.entries.map((entry) => {
+            const rowId = processRowId(entry);
             const ports = entry.ports.length
               ? entry.ports.slice(0, 3).map((port) => \`\${escapeHtml(port.proto)} \${escapeHtml(port.local_addr)}:\${escapeHtml(port.port)}\`).join("<br/>")
               : "No listening ports";
             return \`
-              <article class="card">
+              <article class="card \${selectedRowId === rowId ? "selected" : ""}" data-row-id="\${escapeHtml(rowId)}" data-pid="\${entry.pid}">
                 <div class="card-top">
                   <span class="badge pid mono">\${entry.pid}</span>
                   <div class="card-main">
                     <div class="card-title">\${escapeHtml(entry.name)}</div>
-                    <div class="card-subtitle">TCP \${entry.tcp_ports} · UDP \${entry.udp_ports}</div>
+                    <div class="card-subtitle">TCP \${entry.tcp_ports}  UDP \${entry.udp_ports}</div>
                   </div>
                   <button class="card-action" data-pid="\${entry.pid}">Kill</button>
                 </div>
@@ -569,11 +749,12 @@ function getWebviewHtml(webview: vscode.Webview): string {
         }
 
         const rows = payload.entries.map((entry) => {
+          const rowId = processRowId(entry);
           const ports = entry.ports.length
             ? entry.ports.slice(0, 3).map((port) => \`\${escapeHtml(port.proto)} \${escapeHtml(port.local_addr)}:\${escapeHtml(port.port)}\`).join("<br/>")
             : "No listening ports";
           return \`
-            <tr>
+            <tr class="\${selectedRowId === rowId ? "selected" : ""}" data-row-id="\${escapeHtml(rowId)}" data-pid="\${entry.pid}">
               <td class="mono">\${entry.pid}</td>
               <td class="mono">\${entry.tcp_ports}</td>
               <td class="mono">\${entry.udp_ports}</td>
@@ -601,6 +782,8 @@ function getWebviewHtml(webview: vscode.Webview): string {
       function renderReadyState(state) {
         mode = state.mode;
         filter = state.filter;
+        selectedRowId = state.selectedRowId ?? null;
+        selectedPid = state.selectedPid ?? null;
         if (!isComposing && document.activeElement !== filterInput && filterInput.value !== filter) {
           filterInput.value = filter;
         }
@@ -615,10 +798,22 @@ function getWebviewHtml(webview: vscode.Webview): string {
 
       tableContainer.addEventListener("click", (event) => {
         const target = event.target;
-        if (!(target instanceof HTMLButtonElement)) {
+        if (!(target instanceof Element)) {
           return;
         }
-        const pid = Number(target.dataset.pid);
+
+        const button = target.closest("button[data-pid]");
+        const row = target.closest("[data-row-id]");
+        const rowId = row?.getAttribute("data-row-id");
+        const rowPid = Number(row?.getAttribute("data-pid"));
+        if (rowId && rowPid) {
+          applySelection(rowId, rowPid);
+        }
+
+        if (!(button instanceof HTMLButtonElement)) {
+          return;
+        }
+        const pid = Number(button.dataset.pid);
         if (!pid) {
           return;
         }

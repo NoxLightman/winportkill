@@ -2,7 +2,7 @@
 
 English | [中文](./README.zh.md)
 
-WinPortKill is a Windows-first port and process inspection toolset built around a shared Rust core.
+WinPortKill is a Windows x64-first port and process inspection toolset built around a shared Rust core.
 
 The repository currently contains:
 
@@ -14,7 +14,7 @@ The repository currently contains:
 
 ## Current Scope
 
-- Platform: Windows for the actual port/process inspection flow
+- Platform: Windows x64 for the actual port/process inspection flow
 - Core capabilities: list listening ports, aggregate by process, filter results, kill a PID
 - Shared backend: Rust crates under [crates](./crates)
 - IDE integrations: VS Code webview extension and JetBrains Tool Window
@@ -43,6 +43,9 @@ Other common entrypoints:
 cargo run -p winportkill -- --json
 cargo run -p winportkill -- --serve 3000
 cargo run -p winportkill-gui
+cargo run -p winportkill -- list --json
+cargo run -p winportkill -- who-uses 3000
+cargo run -p winportkill -- kill --port 3000
 ```
 
 ## Runtime Modes
@@ -59,6 +62,15 @@ The root package `winportkill` launches a `ratatui` interface by default.
 ### JSON mode
 
 `--json` prints one snapshot and exits.
+
+### Scriptable CLI mode
+
+The root package also exposes script-friendly subcommands:
+
+- `list [--json]`
+- `who-uses <port> [--json]`
+- `kill --pid <pid> [--json]`
+- `kill --port <port> [--json]`
 
 ### Server mode
 
@@ -96,7 +108,7 @@ The JetBrains plugin lives under [jetbrains-plugin](./jetbrains-plugin).
 
 ## Known Boundaries
 
-- Actual inspection and kill flow is Windows-only.
+- Actual inspection and kill flow is currently Windows x64-only.
 - Killing protected processes may require elevated privileges.
 - The VS Code extension and JetBrains plugin are IDE-specific shells around the same localhost sidecar model.
 - The native GUI and TUI call `winportkill-core` directly instead of going through HTTP.

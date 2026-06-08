@@ -4,9 +4,9 @@
 
 返回：[README](../README.zh.md)
 
-## 总览
+## 概览
 
-WinPortKill 不是单一程序，而是一个共享的 Windows 检查后端加上多种前端：
+WinPortKill 不是单一程序，而是一套共享的 Windows x64 检查后端加多种前端：
 
 - workspace 根目录下的 Rust TUI
 - `crates/winportkill-server` 中的 Rust HTTP sidecar
@@ -24,7 +24,7 @@ WinPortKill 不是单一程序，而是一个共享的 Windows 检查后端加�
 
 ### `winportkill-core`
 
-- 通过 Windows API 扫描监听中的 TCP/UDP 绑定
+- 通过 Windows API 扫描监听中的 TCP / UDP 绑定
 - 通过 `sysinfo` 关联进程名和内存
 - 提供面向端口和面向进程两种视图模型
 - 计算统计信息
@@ -32,9 +32,9 @@ WinPortKill 不是单一程序，而是一个共享的 Windows 检查后端加�
 
 ### `winportkill-server`
 
-- 用 Axum 把 `winportkill-core` 包成 HTTP 路由
+- 用 Axum 将 `winportkill-core` 包装成 HTTP 路由
 - 提供 `/health`、`/ports`、`/processes`、统计接口、`/kill/{pid}` 和 `/ws`
-- 是 IDE 集成所使用的传输层
+- 作为 IDE 集成使用的传输层
 
 ### 根包 `winportkill`
 
@@ -89,7 +89,7 @@ WinPortKill 不是单一程序，而是一个共享的 Windows 检查后端加�
 
 - `.vscode-extension/bin/win32-x64/winportkill.exe`
 
-原因是：
+这很重要，因为：
 
 - VS Code 扩展从这里发货
 - JetBrains 的 `runIde` 开发流程复用这里的二进制
@@ -97,7 +97,7 @@ WinPortKill 不是单一程序，而是一个共享的 Windows 检查后端加�
 
 ## 当前运行边界
 
-- 检查后端在实践中是 Windows-only。
+- 检查后端在实践中当前仅支持 Windows x64。
 - kill 是结束整个进程，不是“只释放某一个端口”。
 - 受保护目标可能需要管理员权限。
 - 当前 WebSocket 流只推送端口视图快照。

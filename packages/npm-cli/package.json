@@ -1,0 +1,43 @@
+{
+  "name": "@noxlightman/winportkill",
+  "version": "0.1.0",
+  "description": "Windows x64 CLI launcher for WinPortKill.",
+  "license": "MIT",
+  "homepage": "https://github.com/NoxLightman/winport-killer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NoxLightman/winport-killer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NoxLightman/winport-killer/issues"
+  },
+  "bin": {
+    "winportkill": "./bin/winportkill.js"
+  },
+  "files": [
+    "bin",
+    "vendor",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "scripts": {
+    "prepack": "node ./scripts/prepare-package.js",
+    "pretest:local": "node ./scripts/prepare-package.js",
+    "test:local": "node ./bin/winportkill.js list --json"
+  },
+  "keywords": [
+    "port",
+    "windows",
+    "process",
+    "cli",
+    "rust"
+  ]
+}

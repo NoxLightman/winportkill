@@ -31,7 +31,7 @@ class SidecarManager(
     fun ensureStarted(): ApiClient {
         client?.let { return it }
 
-        requireWindows()
+        requireWindowsX64()
 
         val port = pickFreePort()
         val binaryPath = resolveBinaryPath()
@@ -131,10 +131,14 @@ class SidecarManager(
         }
     }
 
-    private fun requireWindows() {
+    private fun requireWindowsX64() {
         val osName = System.getProperty("os.name").lowercase()
+        val osArch = System.getProperty("os.arch").lowercase()
         check(osName.contains("win")) {
-            "WinPortKill JetBrains plugin currently supports Windows only."
+            "WinPortKill JetBrains plugin currently supports only Windows x64."
+        }
+        check(osArch == "amd64" || osArch == "x86_64") {
+            "WinPortKill JetBrains plugin currently supports only Windows x64. Detected: $osArch"
         }
     }
 

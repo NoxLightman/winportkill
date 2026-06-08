@@ -1,10 +1,10 @@
 <idea-plugin>
     <id>dev.winportkill.jetbrains</id>
     <name>WinPortKill</name>
-    <vendor email="local@winportkill.dev" url="https://example.invalid">local</vendor>
+    <vendor url="https://github.com/NoxLightman/winport-killer">NoxLightman</vendor>
 
     <description><![CDATA[
-        Inspect local Windows listening ports and processes inside JetBrains IDEs.
+        Inspect local Windows x64 listening ports and processes inside JetBrains IDEs.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

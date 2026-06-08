@@ -6,6 +6,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const sidecarManager = new SidecarManager(context);
   const provider = new WinPortKillViewProvider(context, sidecarManager);
 
+  context.subscriptions.push(provider);
   context.subscriptions.push(sidecarManager);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider("winportkill.sidebar", provider)
@@ -19,9 +20,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand("winportkill.killSelected", async () => {
-      vscode.window.showInformationMessage(
-        "Kill from the panel for MVP. Command wiring can be extended later."
-      );
+      await provider.killSelected();
     })
   );
 }

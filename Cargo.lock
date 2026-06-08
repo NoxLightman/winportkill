@@ -4747,6 +4747,7 @@ dependencies = [
  "crossterm",
  "figlet-rs",
  "ratatui",
+ "serde",
  "serde_json",
  "tokio",
  "winportkill-core",
