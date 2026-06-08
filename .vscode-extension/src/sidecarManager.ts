@@ -1,9 +1,15 @@
 import * as vscode from "vscode";
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
 import * as net from "node:net";
 import * as path from "node:path";
 import { ApiClient } from "./apiClient";
+
+const SIDECAR_FILE = "winportkill.exe";
+const SIDECAR_CACHE_DIR = "sidecar";
+const RELEASE_SIDELOAD_URL =
+  "https://github.com/NoxLightman/winportkill/releases/latest/download/winportkill-windows-x64.exe";
 
 export class SidecarManager implements vscode.Disposable {
   private process: cp.ChildProcess | undefined;
@@ -48,7 +54,7 @@ export class SidecarManager implements vscode.Disposable {
 
   private async startSidecar(): Promise<ApiClient> {
     const port = await pickFreePort();
-    const binaryPath = this.resolveBinaryPath();
+    const binaryPath = await this.resolveBinaryPath();
 
     if (!fs.existsSync(binaryPath)) {
       throw new Error(`WinPortKill sidecar binary not found: ${binaryPath}`);
@@ -84,7 +90,7 @@ export class SidecarManager implements vscode.Disposable {
     return client;
   }
 
-  private resolveBinaryPath(): string {
+  private async resolveBinaryPath(): Promise<string> {
     if (process.platform !== "win32") {
       throw new Error("WinPortKill currently supports only Windows x64.");
     }
@@ -92,7 +98,61 @@ export class SidecarManager implements vscode.Disposable {
       throw new Error(`WinPortKill currently supports only Windows x64. Detected: ${process.arch}`);
     }
 
-    return this.context.asAbsolutePath(path.join("bin", "win32-x64", "winportkill.exe"));
+    const configuredPath = vscode.workspace
+      .getConfiguration("winportkill")
+      .get<string>("sidecarPath", "")
+      .trim();
+    if (configuredPath) {
+      if (!fs.existsSync(configuredPath)) {
+        throw new Error(`Configured WinPortKill sidecar not found: ${configuredPath}`);
+      }
+      return configuredPath;
+    }
+
+    const devBinary = this.resolveDevBinaryPath();
+    if (devBinary) {
+      return devBinary;
+    }
+
+    return this.ensureDownloadedSidecar();
+  }
+
+  private resolveDevBinaryPath(): string | undefined {
+    const packageRoot = this.context.extensionPath;
+    const repoRoot = path.resolve(packageRoot, "..");
+    const candidates = [
+      process.env.WINPORTKILL_BIN,
+      path.join(repoRoot, "target", "debug", SIDECAR_FILE),
+      path.join(repoRoot, "target", "release", SIDECAR_FILE),
+      path.join(repoRoot, ".vscode-extension", "bin", "win32-x64", SIDECAR_FILE)
+    ].filter(Boolean) as string[];
+
+    return candidates.find((candidate) => fs.existsSync(candidate));
+  }
+
+  private async ensureDownloadedSidecar(): Promise<string> {
+    const cacheDir = path.join(this.context.globalStorageUri.fsPath, SIDECAR_CACHE_DIR);
+    const binaryPath = path.join(cacheDir, SIDECAR_FILE);
+    if (fs.existsSync(binaryPath)) {
+      return binaryPath;
+    }
+
+    await fsp.mkdir(cacheDir, { recursive: true });
+    const tempPath = path.join(cacheDir, `${SIDECAR_FILE}.download`);
+
+    this.output.show(true);
+    this.output.appendLine(`Downloading WinPortKill sidecar from ${RELEASE_SIDELOAD_URL}`);
+
+    const response = await fetch(RELEASE_SIDELOAD_URL);
+    if (!response.ok) {
+      throw new Error(`Failed to download WinPortKill sidecar: ${response.status} ${response.statusText}`);
+    }
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    await fsp.writeFile(tempPath, bytes);
+    await fsp.rename(tempPath, binaryPath);
+    this.output.appendLine(`Cached WinPortKill sidecar at ${binaryPath}`);
+    return binaryPath;
   }
 
   private cleanupFailedStart(): void {

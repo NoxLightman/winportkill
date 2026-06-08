@@ -4,6 +4,7 @@
   "description": "Inspect local Windows x64 listening ports and processes inside VS Code.",
   "version": "0.1.0",
   "publisher": "noxlightman",
+  "license": "MIT",
   "homepage": "https://github.com/NoxLightman/winport-killer",
   "bugs": {
     "url": "https://github.com/NoxLightman/winport-killer/issues"
@@ -18,6 +19,15 @@
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "ports",
+    "process",
+    "windows",
+    "developer-tools",
+    "network",
+    "kill-port"
+  ],
+  "icon": "media/icon.png",
   "main": "./dist/extension.js",
   "activationEvents": [
     "onView:winportkill.sidebar",
@@ -64,13 +74,19 @@
           "default": 10,
           "minimum": 3,
           "description": "Refresh interval for the WinPortKill panel."
+        },
+        "winportkill.sidecarPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional absolute path to a local winportkill.exe sidecar. Leave empty to use the cached GitHub Releases download."
         }
       }
     }
   },
   "scripts": {
     "build": "tsc -p ./",
-    "watch": "tsc -w -p ./"
+    "watch": "tsc -w -p ./",
+    "package": "vsce package --allow-missing-repository"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
