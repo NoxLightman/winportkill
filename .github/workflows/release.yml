@@ -25,6 +25,12 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
       - name: Build Rust CLI
         run: cargo build --release -p winportkill
 
