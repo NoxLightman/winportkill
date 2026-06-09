@@ -1,6 +1,6 @@
 {
   "name": "@noxlightman/winportkill",
-  "version": "0.1.0",
+  "version": "0.2.5",
   "description": "Windows x64 CLI launcher for WinPortKill.",
   "license": "MIT",
   "homepage": "https://github.com/NoxLightman/winport-killer",

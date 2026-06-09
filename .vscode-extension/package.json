@@ -2,7 +2,7 @@
   "name": "winportkill-vscode",
   "displayName": "WinPortKill",
   "description": "Inspect local Windows x64 listening ports and processes inside VS Code.",
-  "version": "0.1.0",
+  "version": "0.2.5",
   "publisher": "noxlightman",
   "license": "MIT",
   "homepage": "https://github.com/NoxLightman/winport-killer",
